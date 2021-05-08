@@ -1,0 +1,92 @@
+---
+title: "R Notebook voor beschrijving Bike-project DS&BA Erasmus Q-Intelligence"
+author: "Jimmy Janssen van Raay"
+date: "29-7-2020"
+output:
+  pdf_document: default
+  html_notebook: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+## Project beschrijving
+
+Voor het eind-project voor de opleiding Data Science & Business Analytics heb ik gezocht naar een geschikt project c.q. data-verzameling om de opgedane kennis in uitvoer te brengen. Uiteindelijk is mijn keuze gevallen op de 'Trip History Data-set', gevonden via de site:
+https://www.analyticsvidhya.com/blog/2018/05/24-ultimate-data-science-projects-to-boost-your-knowledge-and-skills/
+
+De 'Capital Bike-data-set' geeft een overzicht van de verhuur van fietsen van dag tot dag over enige jaren van een fiets-verhuur bedrijf in groot Washington D.C. 
+Niet alleen staan de leen-dag en de retour-dag geregistreerd, ook het afhaalstation en het terugbrengstation staan geregistreerd. Het bedrijf heeft een ongeveer 4.500 fietsen en 500 stations. De verhuur is voornamelijk bedoelt voor dag, weekend of kleine meerdaagse trips. Om de analyse interessanter te maken is het plan om de data te koppelen aan de historische weerdata alsmede onderscheid te maken in weekend,- doordeweek,- alsmede feestdagen. Daarnaast wordt de data gekoppeld aan de GPS-coordinaten van de stations zodat ook een geo-analyse kan worden uitgevoerd. Hiermee worden verschillende data-typen aan 
+
+
+### Vragen die (hopelijk) via de analyse beantwoord kunnen worden zijn:
+
+-Wat is de verhuurverwachting voor de komende dag/dagen gezien het weer/seizoen/dag-van-de-week/public-holiday per station?
+
+-Is er een evenwicht te vinden waardoor er geen overschot-fietsen meer moeten worden overgebracht van het ene naar het andere station? 
+ (of in ieder geval inzicht in deze problematiek geven)
+ 
+-Is het mogelijk om 10/20/30% van de stations af te stoten zonder (al teveel) veel verlies aan klandizie?
+ (bedrijfs-economische analyse)
+ 
+In ieder geval zal ik de eerste 2 vragen oppakken in de analyse, mocht er ruimte zijn dan pak ik de derde alsnog op.
+
+Daarnaast laat ik mij leiden door de data zelf om te zien of er nog andere informatie uit te halen is die niet door een vraag vooraf is getriggered (unsupervised learning).
+
+
+## Analyse technieken
+ 
+ Voor de analyse van bovengenoemde data is het plan om dit in 2 onderdelen op te splitsen:
+ 
+ 1. In de eerste plaats een goede & volledige statistische analyse van de data-set inclusief een kleine 'showcase' in visuals/geo-graph', zowel met GGplot2 alsmede met base-R.
+ 
+ 2. Een 'Machine-Learning' benadering van de data aan de hand van het boek 'The art of Machine Learning' van Norm Matloff. 
+ 
+    Deze professor in Computer-Science (voorheen professor statistiek) aan de Universiteit van Californie heeft een draft uitgebracht via zijn website van bovenvermeld boek
+    met een praktische benadering van ML-technieken in R, met een solide, statistisch verantwoorde, onderbouwing. Het boek zal naar verwachting eind 2020 worden
+    gepubliceerd. De website (met boek-link) van dhr. Matloff is hier te vinden;
+    https://matloff.wordpress.com/2020/06/12/new-book-on-machine-learning/comment-page-1/?unapproved=27460&moderation-hash=28cd00cbe078e92bacc464164610a75e#comment-27460
+    
+    De onderverdeling van de behandelde technieken in het boek zijn 'buurt-gebaseerde'-methoden (neighborhood-based) en methoden gebaseerd op lijnen en vlakken.
+  
+#### Onder de 'buurt-gebaseerde'-methoden (neighborhood-based) vallen:
+  
+    * regressie-modellen
+    * classificatie-modellen
+    * beslisbomen
+    * tweaking tree-models: bagging, random forest en boosting.
+    
+#### Onder de lijnen en valkken benadering (lines & planes) vallen:
+  
+    * parametrische methoden (lineair & generalized lineair models, incl. regularization)
+    * Support vector machines
+    * Neural Networks
+    
+Idee is om van ieder genoemde onderverdeling in ieder geval 2 technieken te gebruiken op de data, mocht een techniek zo goed 'werken' met de data dan kan verdieping opportuun zijn.
+
+
+### Data snapshot
+ 
+```{r data}
+library("readr", quietly = TRUE)
+Tripdata <- read.csv("2012Q1-capitalbikeshare-tripdata.csv")
+summary(Tripdata)
+head(Tripdata)
+```
+
+### Data phase update
+
+De Data fase van het project is bijna afgerond. Feature engineering heeft ervoor gezorgd dat de data beter kan worden geanalyseerd. Zo zijn de duur van de verhuur, de dagen van de week en de GPS coordinaten toegevoegd. Vooral deze laatste excercitie heeft veel voeten in de aarde gehad maar zonder geografische analyse zou het onderzoek wat plat blijven. Ook weer data is opgezocht en zal worden toegevoegd. Uit een eerste blik over de data is wel duidelijk dat veruit de meeste ritjes kort van duur zijn en bijna altijd op een dag plaatsvinden.
+
+```{r data Plus}
+TripdataPlus <- read.csv("Samplesq1Enriched.csv")
+summary(TripdataPlus)
+head(TripdataPlus[,14:22])
+```
+
+```{r GPS}
+library("readxl", quietly = TRUE)
+GPSCoords <- read_xlsx("Bikestationsallgeocoded3.xlsx")
+head(GPSCoords)
+```
+
