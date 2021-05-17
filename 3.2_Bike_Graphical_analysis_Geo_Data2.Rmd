@@ -1,0 +1,134 @@
+---
+title: "3.2 Bike_numerical_graphical_Geo_analysis"
+author: "Jimmy Janssen van Raay"
+date: "9-12-2020"
+output:
+  
+  pdf_document:
+    latex_engine: xelatex
+  html_notebook: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+setwd("~/QI Courses/Assignment/Bike/R code")
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Libraries <- c("readr", "skimr", "knitr", "GGally","dplyr","tidyverse","lubridate", "ggmap", "riverplot", "RColorBrewer") #, "stringi", "geosphere", "readxl")
+lapply(Libraries, require, character.only = TRUE)
+for (p in Libraries){
+  if(!require(p, character.only = TRUE)){
+   install.packages(p)
+   library(p, character.only = TRUE)
+  }
+}
+```
+
+## Bike-Geo-data-specific summary
+```{r read Geo data, include=FALSE}
+BikeGeodata <- read.csv("BikedataGeoCodedDistSector.csv")
+
+names(BikeGeodata)
+glimpse(BikeGeodata[1:7,])
+
+#summary(BikeGeodata[,c(1:3)])
+skim(BikeGeodata)
+
+BikeGeodata <- filter(BikeGeodata, lon < -10)
+BikeGeodata <- filter(BikeGeodata, lonE < -10)
+
+summary(BikeGeodata[,c(31)])
+```
+Bij het verrijken van de data met de geografische gegevens zijn de kolommen met de variabelen enigszins door elkaar heen gaan lopen.
+Ook zijn enige longitude-waarden verkeerd uitgekomen; aangezien het om enkele honderden gaat zijn deze eruit gefilterd.
+
+### Station Analyse
+```{r station_graphs, echo = FALSE}
+StationStartPlotNr <- ggplot(BikeGeodata, aes(x = Start_station_number_4, y = Duration_1))
+StationStartPlotNr + geom_col()
+ggplot(BikeGeodata, aes(x = Start_station_number_4)) + geom_histogram(binwidth=4)
+ggplot(BikeGeodata, aes(x = Start_station_number_4)) + geom_bar()
+```
+* Duidelijk te zien op de plots is dat een aantal stations bovenmatig druk zijn en een aantal stations zeer rustig.
+* De stations-nummering zal niet doorlopend zijn, vandaar waarschijnlijk de lege tussenstukken in de grafiek,
+* maar de systematiek hierachter is onbekend.
+
+```{r station_top25, echo = FALSE}
+StartStat <- group_by(BikeGeodata, Start_station_5, StartSector)
+StartStat <- summarize(BikeGeodata, count(StartStat))
+StartStatsmal <- arrange(StartStat, n)
+StartStatlarge <- arrange(StartStat, desc(n))
+
+StartStatsmal[1:25,] # 25 rustigste stations
+StartStatlarge[1:25,] # 25 drukste stations
+```
+* Er zijn veel stations (362), in deze 2 top-25 lijsten staan de 25 rustigste en de 25 drukste. 
+* Zoals al uit de grafiek bleek zijn de onderlinge verschillen groot;
+* In de sample zijn er 3 stations die slechts een keer gebruikt worden in de 5 jaar, terwijl het drukste station 8626 verhuurde
+* fietsen heeft in dezelfde tijd.
+
+
+### Station plots
+```{r Bike Geo-grapgical Station plots, echo = FALSE}
+Startters <- ggplot(BikeGeodata, aes(x = lon, y = lat)) + 
+  geom_point() + 
+  coord_equal() + 
+  xlab('Longitude') + 
+  ylab('Latitude')
+
+ggplot(BikeGeodata, aes(x = lon, y = lat)) + 
+  coord_equal() + 
+  xlab('Longitude') + 
+  ylab('Latitude') + 
+  stat_density2d(aes(fill = ..level..), alpha = .5,
+                 geom = "polygon", data = BikeGeodata) + 
+  scale_fill_viridis_c() + 
+  theme(legend.position = 'none') +
+  coord_cartesian(xlim = c(-76.9, -77.2), 
+                  ylim = c(38.8, 39))
+
+ggplot(BikeGeodata, aes(x = lon, y = lat)) + 
+  geom_point(size = 0.1, alpha = 0.05) + 
+  coord_equal() + 
+  xlab('Longitude') + 
+  ylab('Latitude') + 
+  coord_cartesian(xlim = c(-76.75, -77.25), 
+                  ylim = c(38.8, 39.2))
+
+# ggmap(get_map(location = 'Washington D.C.'))
+```
+
+* Met het plotten van de coordinaten krijg je een redelijk goed beeld waar de drukste stations zich bevinden.
+* Mooist is om dit nog te plotten op de stadskaart maar de Google free trial was van korte duur.
+
+
+
+## Sector Analyse
+### Sector Stats
+```{r SectorStats, echo = FALSE}
+summary(BikeGeodata[,c(32:33)]) # Totalen per startsector en eindsector
+
+#knitr::kable(table(BikeGeodata[,c(32)])) # Totalen per startsector
+knitr::kable(prop.table(table(BikeGeodata[,c(32)]))) # Proporties per startsector
+#knitr::kable(table(BikeGeodata[,c(33)])) # Totalen per eindsector
+knitr::kable(prop.table(table(BikeGeodata[,c(33)]))) # Proporties per eindsector
+
+knitr::kable(table(BikeGeodata[,c(32,33)])) # Begin en eind sector in een tabel, start (van station) is de kolom, eindstation is row
+knitr::kable(round(prop.table(table(BikeGeodata[,c(32,33)])),4)) # Begin en eind sector in een prop-tabel
+colSums(prop.table(table(BikeGeodata[,c(32,33)])),3)
+rowSums(prop.table(table(BikeGeodata[,c(32,33)])),3)
+sum(prop.table(table(BikeGeodata[,c(32,33)])),3)
+
+knitr::kable(round(prop.table(table(BikeGeodata[,c(32,33)]), margin=1),3)) # margin=1:rows tellen op naar 1
+colSums(prop.table(table(BikeGeodata[,c(32,33)]), margin=1),3)
+rowSums(prop.table(table(BikeGeodata[,c(32,33)]), margin=1),3)
+
+knitr::kable(round(prop.table(table(BikeGeodata[,c(32,33)]), margin=2),3)) # margin=2:columns tellen op naar 1
+colSums(prop.table(table(BikeGeodata[,c(32,33)]), margin=2),3) 
+rowSums(prop.table(table(BikeGeodata[,c(32,33)]), margin=2),3)
+```
+
+* De tabellen inzake de drukte van sectoren geven een goed beeld welke sectoren het drukst zijn en tevens de stroom van en naar sectoren (zie riverplot).
+* Wat nu niet zichtbaar is in de tabellen is de drukte door de tijd heen. In deel 4 van de analyse hopen we hier nog aandacht aan te beseteden;
+* tevens zou je bijvoorbeeld tabellen per uur, per dag(-deel), per week of per maand kunnen maken. Data analyse stopt nooit... 
