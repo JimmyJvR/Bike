@@ -1,0 +1,249 @@
+---
+title: "Test 3.1 Bike_numerical_&_graphical_analysis"
+author: "Jimmy Janssen van Raay"
+date: "9-12-2020"
+output:
+  
+  pdf_document:
+    latex_engine: xelatex
+  html_notebook: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+## R Markdown
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+setwd("~/Documenten/Assignment/Bike/R code")
+
+## Packages insert (code hidden)
+```{r setup, include=FALSE}
+Libraries <- c("readr", "tidyverse", "lubridate", "dplyr", "ggmap", "stringr", "stringi", "geosphere", "tidyquant", "knitr", "readxl","skimr", "patchwork", "ggplot2", "stargazer","xtable", "tinytex")
+lapply(Libraries, require, character.only = TRUE)
+#tinytex::tlmgr_install("pdfcrop")
+```
+
+```{r, include=FALSE}
+options(tinytex.verbose = TRUE)
+```
+## Inlezen data (code hidden)
+```{r read data, include=FALSE}
+BikeDataQ1 <- read_csv("BikedataQ1_12-17.csv")
+BikeDataQ1 <- BikeDataQ1[,-1]
+BikeDataQ2 <- read_csv("BikedataQ2_12-17.csv")
+BikeDataQ2 <- BikeDataQ2[,-1]
+BikeDataQ3 <- read_csv("BikedataQ3_12-17.csv")
+BikeDataQ3 <- BikeDataQ3[,-1]
+BikeDataQ4 <- read_csv("BikedataQ4_12-17.csv")
+BikeDataQ4 <- BikeDataQ4[,-1]
+
+BikeData <- rbind(BikeDataQ1,BikeDataQ2, BikeDataQ3, BikeDataQ4)
+
+BikeData2012 <- read_csv("Bikedata2012.csv")
+BikeData2012 <- BikeData2012[,-1]
+BikeData2013 <- read_csv("Bikedata2013.csv")
+BikeData2013 <- BikeData2013[,-1]
+BikeData2014 <- read_csv("Bikedata2014.csv")
+BikeData2014 <- BikeData2014[,-1]
+BikeData2015 <- read_csv("Bikedata2015.csv")
+BikeData2015 <- BikeData2015[,-1]
+BikeData2016 <- read_csv("Bikedata2016.csv")
+BikeData2016 <- BikeData2016[,-1]
+BikeData2017 <- read_csv("Bikedata2017.csv")
+BikeData2017 <- BikeData2017[,-1]
+
+```
+
+## Data Summary
+```{r Bike Data Overview}
+#glimpse(BikeData[1:7,])
+# Functie ´Glimpse´ geeft snel overzicht van de verschillende variabelen en haar data typen
+# in de data-set. 
+```
+# Beschrijving variabelen:
+* Kolom 1 geeft de duration per gehuurde fiets in seconden.
+* Kolom 2 en 3 de begindatum en einddatum van de huur (incl. tijd; kolom 15 & 16 hiervan afgeleid)
+* Kolom 4 en 6 geven de station nummer weer, 5 & 7 de naam/adres van het desbetreffende verhuurstation.
+* Kolom 8 geeft weer of het om een ´member´ gaat of dat er ´casual´, dus zonder lidmaatschao wordt gehuurd.
+* Vanaf de 9e kolom zijn het aangemaakte variabelen, gedestileerd uit de bestaande, oorspronkelijke data 
+  (data engineered) om een vollediger analyse te kunnen maken. Zie hiervoor deel 2 van de R-code van dit project.
+* Kolom 9 en 10 zijn de dagen van de week waarop verhuurd wordt voor de begin,- en einddag;
+  hierbij is maandag 1, dinsdag 2 etc.
+* Kolom 11, 12, 13, 14 en 21 zijn zogenaamde dummy of indicator variabelen (0 of 1), 
+  ook wel bekend als one-hot coding. 
+* Kolom 11 & 12 geven aan of het al dan niet om een weekenddag gaat(1) of niet (0), 
+  voor begin en einddag van de verhuur.
+* Kolom 13 geeft aan of de huurder een member is (1) of niet (0).
+* Kolom 14 geeft aan of de fiets dezelfde dag wordt teruggebracht (1) of niet (0).
+* Kolom 15 & 16 zijn dus de tijden waarop de huur begint en eindigt (afgeleid van kolom 2 & 3).
+* kolom 17 & 18 zijn de dagdelen (ochtend=1, middag=2, avond=3 en nacht is 4) waarop begin & eind van de verhuur
+  geschiedt.
+* kolom 19 is de duration van de huuris een leesbaarder formaat.
+* Kolom 20 en 22 zijn de maand respectievelijk de week (weeknummer) waarin de verhuur geschied.
+* Kolom 21 geeft aan of de fiets op hetzelfde station wordt teruggebracht (1) of niet (0).
+
+```{r}
+#summary(BikeData)
+#summary(BikeData[,c(1:3,13,14,17,18,21)])
+```
+Inzake Summary-function, eigenlijk is van de statistische samenvatting alleen de duration (lengte van rit) interressant en informatief, hieronder zal wel het aantal ritten per tijdseenheid (dag(-deel)/week/maand/kwartaal/jaar) worden geanalyseerd, de afstanden en locaties (sectors) worden in # 3.2 geanalyseerd bij de geo-analyse.
+
+De minimale huur per fiets is dus 1 minuut, mediaan zit rond de 600 minuten (10 minuten)
+en het gemiddelde zit hier stuk boven met 1054 seconden (kwartier).
+Het betreft dus voornamelijk korte stadsritjes, waarschijnlijk meestens forenzen-ritjes.
+De maximale verhuur is nog net geen etmaal.
+
+```{r}
+skim(BikeData)
+```
+Met de functie ´skim´ krijg je een aardig overzicht van de data inclusief eenvoudige plots, handig voor eerste indruk.
+In eerste instantie zijn alle bestanden (kwartalen en jaren) met skim bekeken maar beter is om deze af te zetten
+in een grafiek met datgene (bv duration) met wat je nader wilt analyseren. De grafieken vallen helaas wel weg in de pdf.
+
+## Plot Summaries
+### Duration-plots general
+```{r Bike Data Plots Duration, echo = FALSE} 
+#boxplot(BikeData$Duration_1)
+#ggplot(BikeData, aes(x = Duration_1)) + geom_boxplot()
+plot1 <- ggplot(BikeData, aes(Duration_1)) + geom_histogram() + xlim(0, 25000)
+#ggplot(BikeData, aes(Duration_1)) + geom_histogram() + xlim(0, 15000)
+plot2 <- ggplot(BikeData, aes(Duration_1)) + geom_histogram() + xlim(0, 9000)
+plot3 <- ggplot(BikeData, aes(Duration_1)) + geom_bar() + xlim(0,9000)
+plot4 <- ggplot(BikeData, aes(Duration_1)) + geom_bar() + xlim(0,5000)
+(plot1 | plot2) / (plot3 | plot4)
+```
+
+Het grootste deel van de verhuur vindt binnen hetzelfde etmaal (<1440) plaats, gemiddeld (n=920) genomen duren de meeste trips wel langer dan een halve dag (>720) maar qua aantal/mediaan zijn de meeste trips zelfs korter (m=587). Wel zijn er enige enorme uitschieters naar boven toe.
+
+### Duration-plots per selected variable
+```{r Bike Data Plots Duration vs. time variables, echo = FALSE}
+plotjaar <- ggplot(BikeData, aes(x = year(Start_date_2), y = Duration_1)) + geom_col() + labs(title = "Jaartotalen")
+
+plotmaand <- ggplot(BikeData, aes(x = Month_20, y = Duration_1)) + geom_col() + labs(title = "Maandtotalen")
+
+plotweek  <-ggplot(BikeData, aes(x = WeekNr_22, y = Duration_1)) + geom_col() + labs(title = "Weektotalen")
+
+plotdag <-ggplot(BikeData, aes(x = yday(Start_date_2), y = Duration_1)) + geom_col() + labs(title = "Dagtotalen")
+
+(plotjaar | plotmaand) / (plotweek | plotdag)
+```
+
+* Bij het afzetten van de het jaartal t.o.v. de duration is mooi de groei van jaar op jaar te zien.
+* Bij de grafiek van maand t.o.v. duration is ook in zekere zin een ´logische´ opbouw te zien richting zomer
+  met wel met maart & oktober als drukste maand (waarschijnlijk minste vakantie tijdens deze maanden). 
+* Bij de grafiek met duration-duur per week is nog duidelijker de piek in het voorjaar en het najaar te zien. 
+* Rond de jaarwisseling is verreweg de minste duration/verhuur.
+* De dag-grafiek laat een nog mooier grilliger beeld zien. Hierin zitten ongewijfeld feestdagen en zal ook  
+  het weer van de dag een rol hebben gespeeld!
+  
+```{r weekverloop, echo = FALSE}
+plotweekverloopstart <- ggplot(BikeData, aes(x = Weekday_Start_9, y = Duration_1/10000)) + geom_col() + labs(title = "Weekverloop start")
+plotweekverloopeind <- ggplot(BikeData, aes(x = Weekday_End_10, y = Duration_1/10000)) + geom_col() + labs(title = "Weekverloop eind")
+plotweekverloopstart
+plotweekverloopeind
+```
+
+* De laatste 2 grafieken met duration per dagdeel laten een duidelijk drukkere verhuur zien in het weekend.
+* Blijkbaar zijn het niet alleen forenzen die fietsen huren! 
+* Verschil binnen dag tussen begin en einde verhuur is (zoals te verwachten valt, klein.)
+
+### Duration-tables & proportion-tables per selected variable
+# Member tables
+```{r Bike Data Plots Duration vs. part of day/week, echo = FALSE}
+# Member tables
+Lid <-  BikeData[,8] # selectie leden
+knitr::kable(list(table(Lid,exclude = "Unknown"), prop.table(table(Lid,exclude = "Unknown")))
+             ,caption = "Overzicht huurders lidmaatschap, totaal en percentage"
+             ,valign = "t", booktabs = TRUE, format.args = list(big.mark = ","))  
+```
+
+* Bijna 80% van alle huurders betreft leden van het verhuurfietsplan.
+
+```{r Weekday Tables, echo = FALSE}
+# Member type vs. Weekday
+LidWd <- BikeData[,8:9] #Lid & weekdag
+knitr::kable(list(table(LidWd, exclude = "Unknown"), prop.table(table(LidWd,exclude = "Unknown")))
+             ,caption = "Overzicht huurders per weekdag, aantal en prop"
+             , valign = "t", booktabs = TRUE, format.args = list(big.mark = ","),digits = 3)
+
+datawd <- table(BikeData[,c(8,10)],exclude = "Unknown")
+datawd <- prop.table(datawd,margin = 2) %>% as.data.frame.matrix()
+ppp <- data.frame(round(datawd*100,digits = 2))
+knitr::kable(ppp, col.names = c("ma","di","wo","do","vrij","za","zo"))
+```
+* In het weekend is de verhuding tussen incidentele gebruikers en leden meer in balans, ruwwweg 35% vs. 65%,
+  in plaats van 17% vs. 83%  
+
+```{r Weekend Tables, echo = FALSE}
+# Member type vs. Weekend-day
+LidWkd <- BikeData[,c(8,11)] #selectie Lid & Weekend-dag
+knitr::kable(list(table(LidWkd,exclude = "Unknown"), #table 1
+                  round(prop.table(table(LidWkd,exclude = "Unknown")),2)), #table2
+                    caption = "Werkdag (0) vs Weekenddag (1), aantal en prop", 
+                      valign = "t", booktabs = TRUE, format.args = list(big.mark = ",")) # Tabels comments
+```
+* Enkel de verhouding werkdag en weekenddag geeft een nog iets beter beeld tussen weekend en doordeweekse drukte en vooral de verhouding.
+* Grootste deel verhuur is leden doordeweeks (61%), gevolgd door leden weekend (17,7%) en daarna niet-leden met zoń 10% verdeeld over week,- en weekend.
+
+```{r Same-day Tables, echo = FALSE}
+# Member type vs. same-dayback
+LidDsB <- BikeData[,c(8,14)] #selectie Lid & Same-day Back
+knitr::kable(list(table(LidDsB,exclude = "Unknown"), #table 1
+                  round(prop.table(table(LidDsB,exclude = "Unknown")),3)), #table2
+                    caption = "Verhouding zelfde dag terug (1) vs. dag later(0), aantal en prop",
+                      valign = "t", booktabs = TRUE, format.args = list(big.mark = ",")) # Tabels comments
+```
+* Bijna alle fietsen worden dezelfde dag teruggebracht, dit viel te verwachten gezien de aard van de fietsverhuur (grab&go).
+
+```{r Daypart Tables, echo = FALSE}
+# Member type vs. daypart
+LidDPS <- BikeData[,c(8,17)] #selectie Lid & daypart start
+LidDPE <- BikeData[,c(8,17)] #selectie Lid & daypart end
+knitr::kable(list(table(LidDPS,exclude = "Unknown"), #table 1
+                  table(LidDPE,exclude = "Unknown")), #table2
+                    caption = "Totalen per dagdeel, begin/eind verhuur", col.names = c("nacht","ocht","middg","avond"),
+                    valign = "t", booktabs = TRUE, format.args = list(big.mark = ","),digits = 3) 
+
+
+
+knitr::kable(list(round(prop.table(table(LidDPS,exclude = "Unknown")),3), #table 1
+                  round(prop.table(table(LidDPE,exclude = "Unknown")),3)),#table2
+                    col.names = c("nacht","ocht","middg","avond"),
+                    digits = 3,caption = "Percentages per dagdeel, begin/eind verhuur")  
+
+```
+* Verhuur opgesplitst naar dagdelen geeft een goed beeld wanneer de drukste dagdelen zijn.
+* Nacht is veruit het rustigste moment, ochten en vooral de middag zijn de drukste dagdelen.
+
+```{r Same-Station Tables, echo = FALSE}
+# Member type vs. same-station 
+LidSS <- BikeData[,c(8,21)] #selectie Lid & station (start)
+knitr::kable(list(table(LidSS,exclude = "Unknown"), #table 1
+                  round(prop.table(table(LidSS,exclude = "Unknown")),3)), #table2
+                    caption = "Zelfde station terug, ja=1", valign = "t", booktabs = TRUE, format.args = list(big.mark = ","),digits = 3) 
+# Tabe;s comments
+SSt <- BikeData[,21]
+knitr::kable(round(prop.table(table(SSt,exclude = "Unknown")),3))
+```
+* Meeste fietsen (bijna 97%) worden bij een ander station teruggebracht als waar ze gehaald werden. 
+* De derde grafiek laat dit overduidelijk zien.
+
+## Time-Graphs Analyses
+
+```{r time-graphs, echo = FALSE}
+WeekvraagMember <- ggplot(data = BikeData, aes(x = WeekNr_22, fill = Member_type_8))
+WeekvraagMember + geom_histogram(colour = "midnightblue", bins = 53) + 
+  theme_classic()
+
+WeekvraagDagDeelStart <- ggplot(data = BikeData, aes(x = WeekNr_22, fill = as.character(Day_part_Start_17)))
+WeekvraagDagDeelStart + geom_histogram(colour = "midnightblue", bins = 53) + 
+  theme_classic() + 
+  scale_fill_discrete("Dagdeel:", labels = c("Nacht", "Ochtend","Middag","Avond" ))
+
+WeekvraagDagDeelEnd <- ggplot(data = BikeData, aes(x = WeekNr_22, fill = as.character(Day_part_End_18)))
+WeekvraagDagDeelEnd  + geom_histogram(colour = "midnightblue", bins = 53) + 
+  theme_classic() +
+  scale_fill_discrete("Dagdeel:", labels = c("Nacht", "Ochtend","Middag","Avond" ))
+```
+* Op de grafieken in aanvulling op de tabelinformatie is nog eens goed visueel het verschil te zien in member & casual-huurders.
+* Tevens is ook visueel inzichtelijk(-er) de verdeling over de 3 dagdelen.
