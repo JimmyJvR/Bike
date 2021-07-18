@@ -1,0 +1,647 @@
+
+---
+title: "4.Bike_graphical analysis"
+author: "Jimmy Janssen van Raay"
+date: "9-11-2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+Libraries <- c("readr", "knitr","dplyr","tidyverse","lubridate", "ggmap", "regtools", "RColorBrewer", "readxl", "partykit","tibble", "rpart", "rattle", "rpart.plot","corrplot","jtools","kableExtra","skimr","huxtable","sjPlot","sjmisc", "sjlabelled") 
+#, "stringi", "geosphere", "readxl")
+lapply(Libraries, require, character.only = TRUE)
+#for (p in Libraries){
+#  if(!require(p, character.only = TRUE)){
+#   install.packages(p)
+#   library(p, character.only = TRUE)
+#  }
+#}
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+## ML Analysis Bike
+### Inlezen data (almede opschonen/indelen enige kolommen en enkele regels met verkeerde lon-lat coordinaten verwijderen)
+```{r Bike ML Analysis}
+BikeGeodata <- read.csv("BikedataGeoCodedDistSector.csv")
+#glimpse(BikeGeodata[1:4,])
+BikeGeodata <- BikeGeodata[,4:34]
+BikeGeodata <- BikeGeodata[,-3]
+BikeGeodata <- filter(BikeGeodata, lon < -10)
+BikeGeodata <- filter(BikeGeodata, lonE < -10)
+BikeGeodata$Start_date_2 <- date(BikeGeodata$Start_date_2)
+BikeGeodata$End_date_3 <- date(BikeGeodata$End_date_3)
+glimpse(BikeGeodata[1:7,])
+```
+
+```{r weerdata inlezen}
+Weerdata <- read_xlsx("Wheather12-17.xlsx")
+glimpse(Weerdata[1:7,])
+head(Weerdata)
+Weerdata$`timestamp NL` <- date(Weerdata$`timestamp NL`)
+Weerdata <- rename(Weerdata, Start_date_2 = "timestamp NL")
+glimpse(Weerdata[1:8,])
+head(Weerdata)
+Weerdata$`Temperature °C Mean` <- as.double(Weerdata$`Temperature °C Mean`)
+Weerdata$`Relative Humidity % Mean` <- as.double(Weerdata$`Relative Humidity % Mean`)
+Weerdata$`Wind Speed km/h Mean` <- as.double(Weerdata$`Wind Speed km/h Mean`)
+Weerdata$Precipitation <- as.double(Weerdata$Precipitation)
+head(Weerdata)
+```
+
+
+## Weer data koppelen
+```{r weer-data koppelen aan bikegeo-data}
+BikeGeoWeerdata <- merge(BikeGeodata, Weerdata[,c("Start_date_2", "Temperature °C Mean", 
+                                                  "Relative Humidity % Mean", "Wind Speed km/h Mean",
+                                                  "Precipitation")], by="Start_date_2")
+#BikeData <- merge(BikeData, GeodataE[,c("End_station_7", "lonE", "latE")], by="End_station_7")
+glimpse(BikeGeoWeerdata[10000:10008,])
+#head(BikeGeodata)
+#tail(BikeGeoWeerdata)
+```
+
+Gehouden bij de 4 variabelen temperatuur, (relatieve) luchtvochtigheid, Wind snelheid en Neerslag.
+
+## Dagtotalen maken voor de variabelen aantal verhuren, dagduur taotaal en afstand totaal
+```{r dagtotalen(aantal/duur/afstand) maken}
+# aantal verhuren per dag
+daghuuraantal <- BikeGeoWeerdata %>% group_by(Start_date_2) %>% tally() 
+daghuuraantal <- rename(daghuuraantal, huurtotaal = "n")
+# totale duur (in minuten) per dag
+dagduurtotaal <- BikeGeoWeerdata %>% group_by(Start_date_2) %>% tally(Duration_1) 
+dagduurtotaal <- rename(dagduurtotaal, duurtotaal = "n")
+# totale afstand (in meters) per dag
+dagdistancetotaal <- BikeGeoWeerdata %>% group_by(Start_date_2) %>% tally(distance) 
+dagdistancetotaal <- rename(dagdistancetotaal, distancetotaal = "n")
+
+BikeDagData <- cbind(daghuuraantal, dagduurtotaal[,2], dagdistancetotaal[,2])
+glimpse(BikeDagData)
+skim_without_charts(BikeDagData)
+
+BikeDagDataWheather <- merge(BikeDagData, Weerdata[,c("Start_date_2", "Temperature °C Mean", 
+                                                      "Relative Humidity % Mean","Wind Speed km/h Mean",
+                                                      "Precipitation")], by="Start_date_2")
+
+glimpse(BikeDagDataWheather)
+summary(BikeDagDataWheather)
+write.csv(BikeDagDataWheather, "BikeDagDataWheather.csv")
+# file maken met genormaliseerde/gestandariseerde data (indien nodig)
+normalise <- function(x) {
+              return((x - min(x))/ (max(x - min(x))))
+}
+
+BikeDagDataWheatherNorm <- BikeDagDataWheather
+BikeDagDataWheatherNorm$`Temperature °C Mean`[1:nrow(BikeDagDataWheather)] <- 
+  normalise(BikeDagDataWheather$`Temperature °C Mean`[1:nrow(BikeDagDataWheather)])
+BikeDagDataWheatherNorm$`Relative Humidity % Mean`[1:nrow(BikeDagDataWheather)] <- 
+  normalise(BikeDagDataWheather$`Relative Humidity % Mean`[1:nrow(BikeDagDataWheather)])
+BikeDagDataWheatherNorm$`Wind Speed km/h Mean`[1:nrow(BikeDagDataWheather)] <- 
+  normalise(BikeDagDataWheather$`Wind Speed km/h Mean`[1:nrow(BikeDagDataWheather)])
+BikeDagDataWheatherNorm$`Precipitation`[1:nrow(BikeDagDataWheather)] <- 
+  normalise(BikeDagDataWheather$`Precipitation`[1:nrow(BikeDagDataWheather)])
+
+glimpse(BikeDagDataWheatherNorm)
+summary(BikeDagDataWheatherNorm)
+write.csv(BikeDagDataWheatherNorm, "BikeDagDataWheatherNorm.csv")
+
+# Bij de data van de dag, gecombineerd met weerdata en de daghuur,-duur,-en afstand totalen 
+# zijn hieronder nog de data toegevoegd van kalander-data (dag vd week, weekend(1/0),maand en weeknummer) 
+BikeDagDataWheatherPlus <- distinct(BikeGeoWeerdata, BikeGeoWeerdata$Start_date_2, .keep_all = TRUE)
+glimpse(BikeDagDataWheatherPlus)
+BikeDagDataWheatherPlus <- BikeDagDataWheatherPlus[,c(1,9,11,20,22)]
+BikeDagDataWheatherPlus <- merge(BikeDagDataWheatherPlus, BikeDagDataWheather, by="Start_date_2")
+glimpse(BikeDagDataWheatherPlus)
+summary(BikeDagDataWheatherPlus)
+write.csv(BikeDagDataWheatherPlus, "BikeDagDataWheatherPlus.csv")
+```
+Bij al deze totalen wel de opmerking dat het uiteindelijk hier om samples ging en het betreft de gesommeerde dag-totalen van de samples, niet van het geheel!
+
+## Correlation Matrix
+
+```{r}
+# Om een beeld te krijgen hoe de variabelen met elkaar correleren en dus samenhangen eerst maar eens een correlatie-matrix maken met alle variabelen
+# https://www.r-bloggers.com/2018/10/how-to-create-a-correlation-matrix-in-r/
+#glimpse(BikeDagDataWheatherPlus)
+BikeDagDataWheatherPluss <- BikeDagDataWheatherPlus[,-1]
+glimpse(BikeDagDataWheatherPluss)
+BikeDagDataWheatherPluss.cor = cor(BikeDagDataWheatherPluss)
+BikeDagDataWheatherPluss.cor
+corrplot(BikeDagDataWheatherPluss.cor) #Correlogram
+```
+Het is mooi (en ook wel logisch) om te zien dat de 3 totatelen (huur/duur/distance) erg nauw met elkaar correleren, deze zullen dan ook meestens als aparte afhankelijke variabele worden beschouwd en als zodanig afzonderlijk worden geanalyseerd.
+
+*Verder is duidelijk te zien dat temperatuur positief correleerd met de maand en het weeknummer, alsmede de 3 afhankelijke variabelen. Tegerlijkertijd correleerd het negatief met de relatieve luchtvochtigheid en de windsnelheid en verder nauwelijks met neerslag.
+*De relatieve luchtvochtigheid is vrijwel het tegenovergestelde van temperatuur en gaat vrijwel gelijk op met windsnelheid.
+*Neerslag heeft vooral negatieve invloed op de 3 afhankelijke variabelen en positieve correlatie met vochtigheid.
+
+Verder valt op dat van de kalenderdata weekdag (1 t/m 7) en weekenddag (1/0) erg sterk met elkaar correleren alsmede maand en weeknummer.
+
+
+## Regressie-analyses
+```{r Regressie-analyse I}
+
+# 2 Regressies om te kijken welke variabele het sterkst de daghuur bepaald, 
+# zowel met de standaard data als met de genormaliseerde data:
+
+BikeModelHuur <- lm(huurtotaal ~ BikeDagDataWheather$`Temperature °C Mean` + 
+                  BikeDagDataWheather$`Relative Humidity % Mean` + 
+                  BikeDagDataWheather$`Wind Speed km/h Mean` + 
+                  BikeDagDataWheather$`Precipitation`, 
+                  data = BikeDagDataWheather)
+
+
+BikeModelNorm <- lm(huurtotaal ~ BikeDagDataWheatherNorm$`Temperature °C Mean` + 
+                      BikeDagDataWheatherNorm$`Relative Humidity % Mean` +
+                      BikeDagDataWheatherNorm$`Wind Speed km/h Mean` + 
+                      BikeDagDataWheatherNorm$`Precipitation`, 
+                      data = BikeDagDataWheatherNorm)
+
+# 2 * 2 regressies om de invloed van de weervariabelen op de andere Y's te bepalen; 
+# duur van de huur alsmede de gereden afstanden:
+
+BikeModelDuur <- lm(duurtotaal ~ BikeDagDataWheather$`Temperature °C Mean` + 
+                  BikeDagDataWheather$`Relative Humidity % Mean` + 
+                  BikeDagDataWheather$`Wind Speed km/h Mean` + 
+                  BikeDagDataWheather$`Precipitation`, 
+                  data = BikeDagDataWheather)
+
+BikeModelNormDuur <- lm(duurtotaal ~ BikeDagDataWheatherNorm$`Temperature °C Mean` + 
+                          BikeDagDataWheatherNorm$`Relative Humidity % Mean` + 
+                          BikeDagDataWheatherNorm$`Wind Speed km/h Mean` + 
+                          BikeDagDataWheatherNorm$`Precipitation`,
+                          data = BikeDagDataWheatherNorm)
+
+BikeModelDst <- lm(distancetotaal ~ BikeDagDataWheather$`Temperature °C Mean` + 
+                  BikeDagDataWheather$`Relative Humidity % Mean` + 
+                  BikeDagDataWheather$`Wind Speed km/h Mean` + 
+                  BikeDagDataWheather$`Precipitation`, 
+                  data = BikeDagDataWheather)
+
+
+BikeModelNormDst <- lm(distancetotaal ~ BikeDagDataWheatherNorm$`Temperature °C Mean` + 
+                         BikeDagDataWheatherNorm$`Relative Humidity % Mean` + 
+                         BikeDagDataWheatherNorm$`Wind Speed km/h Mean` + 
+                         BikeDagDataWheatherNorm$`Precipitation`, 
+                         data = BikeDagDataWheatherNorm)
+
+summary(BikeModelHuur)
+summary(BikeModelNorm)
+summary(BikeModelDuur)
+summary(BikeModelNormDuur)
+summary(BikeModelDst)
+summary(BikeModelNormDst)
+modelOne <- tab_model(BikeModelHuur,BikeModelDuur,BikeModelDst)
+save_kable(modelOne,"model1.png")
+summary(BikeModelHuur)
+modelOned <- tab_model(BikeModelHuur,BikeModelDuur,BikeModelDst, 
+                      show.est = FALSE, show.ci = FALSE, show.se = TRUE, show.std = TRUE, show.stat = TRUE)
+save_kable(modelOned,"model1d.png")
+
+#summ(BikeModelHuur)
+#export_summs(BikeModelHuur, scale = TRUE)
+#plot(BikeModel)
+
+```
+Bij alle modellen zijn de temperatuur en de neerslag veruit de belangrijkste onafhankelijke variabelen en tevens ook de enige significante, waarbij temperatuur positief bijdraagt (>temp;>verhuur) en neerslag negatief (>neerslag;<verhuur).
+Ook hierbij de aantekening dat natuurlijk de variabelen in de uitgebreide data-file (zoals bv. dag vd week, feestdag) 
+natuurlijk ook een rol kunnen (en zullen) spelen. Voor nu beperkt deze analyse zich echter op (de invloed van) het weer.
+
+De zogenaamde Multiple R-squared zijn wel vrij laag bij alle modellen dus erg veel voorspellende waarden hebben ze ook weer niet,
+alleen bij de analyse van huur-totalen lijkt het model nog iets van voorspellende waarde te hebben.
+
+De residuen laten bij de afhankelijke variabele huurtotaal een nog redelijk symetrisch verdeeld beeld zien, 
+duur & afstand is de verdeling erg naar rechts getrokken, wat niet gek is voor deze variabelen.
+
+Nu nog een regressie om te kijken of (een van) de kalanderdata nog specifieke invloed hebben
+
+```{r Regressie-analyse II}
+
+# 2*3 regressies, 3 zonder weer-variabelen daarna 3 met de 2 significant gebleken weerinvloeden temperatuur en neerslag
+# en de significant gebleken kalender-variabele om hun invloed te bepalen op de 3 afhankelijke variabelen, huurduur, duurtotaal en distance-totaal
+
+# zonder weerinvloeden:
+BikeModelPlushr <- lm(huurtotaal ~  
+                  BikeDagDataWheatherPlus$`Weekday_Start_9` + 
+                  BikeDagDataWheatherPlus$`Weekend_Start_11` + 
+                  BikeDagDataWheatherPlus$`Month_20` +
+                  BikeDagDataWheatherPlus$`WeekNr_22`,
+                  data = BikeDagDataWheatherPlus)
+
+BikeModelPlusdr <- lm(duurtotaal ~ 
+                  BikeDagDataWheatherPlus$`Weekday_Start_9` + 
+                  BikeDagDataWheatherPlus$`Weekend_Start_11` + 
+                  BikeDagDataWheatherPlus$`Month_20` +
+                  BikeDagDataWheatherPlus$`WeekNr_22`,
+                  data = BikeDagDataWheatherPlus)
+
+BikeModelPlusDis <- lm(distancetotaal ~ 
+                  BikeDagDataWheatherPlus$`Weekday_Start_9` + 
+                  BikeDagDataWheatherPlus$`Weekend_Start_11` + 
+                  BikeDagDataWheatherPlus$`Month_20` +
+                  BikeDagDataWheatherPlus$`WeekNr_22`,
+                  data = BikeDagDataWheatherPlus)
+
+# met weer invloeden:
+colnames(BikeDagDataWheatherPlus)[9] <- "Temperature"
+
+BikeModelPlushuur <- lm(huurtotaal ~ Temperature + 
+                                     Precipitation +
+                                     Weekend_Start_11, 
+                  data = BikeDagDataWheatherPlus)
+
+
+BikeModelPlusduur <- lm(duurtotaal ~ Temperature + 
+                                     Precipitation +
+                                      Weekend_Start_11, 
+                  data = BikeDagDataWheatherPlus)
+
+BikeModelPlusdistance <- lm(distancetotaal ~ Temperature + 
+                                             Precipitation +
+                                              Weekend_Start_11,
+                  data = BikeDagDataWheatherPlus)
+
+summary(BikeModelPlushr)                 
+summary(BikeModelPlusdr)
+summary(BikeModelPlusDis)
+modelTwo <- tab_model(BikeModelPlushr,BikeModelPlusdr,BikeModelPlusDis)
+save_kable(modelTwo,"model2.png")
+summary(BikeModelPlushuur)
+summary(BikeModelPlusduur)
+summary(BikeModelPlusdistance)
+modelThree <- tab_model(BikeModelPlushuur,BikeModelPlusduur, BikeModelPlusdistance)
+save_kable(modelThree,"model3.png")
+modelThreeB <- tab_model(BikeModelPlushuur,BikeModelPlusduur, BikeModelPlusdistance, 
+                      show.est = FALSE, show.se = TRUE, show.std = TRUE, show.stat = TRUE, show.fstat = TRUE, show.p = FALSE)
+save_kable(modelThreeB,"model3b.png")
+
+
+```
+Van alle kalender-predictor-variabele is "weekend" de enige duidelijk significante, wat wel opvalt is 
+dat deze onafhankelijke variable een negatieve invloed heeft op het huurtotaal en op de gereden afstanden maar
+daarentegen een positieve impact heeft op het duurtotaal; in het weekend worden er dus minder fietsen verhuurd 
+en rijdt men ook minder ver maar duurt de verhuur wel langer.
+
+De Multiple R-squared's zijn bij de kalender-variabelen wel allen erg laag.
+
+De residuals laten een redelijk symetrisch beeld zien, met ook hier weer een 'skewness' naar recht bij huurtotaal en afstandtotaal.  
+
+Als de 2 significante weervariabelen worden meegenomen wordt de voorspellende waarde wel een stuk beter als we de multiple R-Squared
+in ogenschouw nemen.
+
+Een allerlaatste regressie-ronde met enkel de 3 duidelijk significante variabelen om te zien of het model nog verbeterd:
+
+```{r Regressie-analyse III}
+#colnames(BikeDagDataWheatherPlus) <-
+#ncol
+BikeModelhuurSigg <- lm(huurtotaal ~ BikeDagDataWheatherPlus[,9] + 
+                                         BikeDagDataWheather$Precipitation +
+                                         BikeDagDataWheatherPlus[,3], 
+                                  data = BikeDagDataWheatherPlus)
+
+BikeModelhuurSig <- lm(huurtotaal ~ BikeDagDataWheatherPlus$`Temperature °C Mean` + 
+                                         BikeDagDataWheather$Precipitation +
+                                         BikeDagDataWheatherPlus$`Weekend_Start_11`, 
+                                  data = BikeDagDataWheatherPlus)
+
+BikeModelduurSig <- lm(duurtotaal ~ BikeDagDataWheatherPlus$`Temperature °C Mean` + 
+                                         BikeDagDataWheather$`Precipitation` +
+                                         BikeDagDataWheatherPlus$`Weekend_Start_11`,
+                                  data = BikeDagDataWheatherPlus)
+
+BikeModeldistanceSig <- lm(distancetotaal ~ BikeDagDataWheatherPlus$`Temperature °C Mean` + 
+                                                 BikeDagDataWheather$`Precipitation` +
+                                                 BikeDagDataWheatherPlus$`Weekend_Start_11`, 
+                                  data = BikeDagDataWheatherPlus)
+
+summary(BikeModelhuurSig)
+summary(BikeModelhuurSigg)
+
+summary(BikeModelduurSig)
+summary(BikeModeldistanceSig)
+
+modelTwo <- tab_model(BikeModelhuurSig)
+
+#modelgreazt <- tab_model(BikeModelhuurSig,BikeModelduurSig,BikeModeldistanceSig)
+#save_kable(modelThree,"model3.png")
+```
+
+
+
+
+```{r Regressie-analyse IV}
+# Een laatste regressie analyse om te zien hoe groot de invloed van het weer is op de weekend-fietsers
+
+BikeDagDataWheatherPlusW <- filter(BikeDagDataWheatherPlus, BikeDagDataWheatherPlus$Weekend_Start_11 == 1) # selecteer enkel weekend
+
+
+BikeModelPlushuurSignW <- lm(huurtotaal ~ BikeDagDataWheatherPlusW$`Temperature °C Mean` + 
+                                         BikeDagDataWheatherPlusW$`Precipitation` +
+                                         BikeDagDataWheatherPlusW$`Weekend_Start_11`, 
+                                  data = BikeDagDataWheatherPlusW)
+
+BikeModelPlusduurSignW <- lm(duurtotaal ~ BikeDagDataWheatherPlusW$`Temperature °C Mean` + 
+                                         BikeDagDataWheatherPlusW$`Precipitation` +
+                                         BikeDagDataWheatherPlusW$`Weekend_Start_11`,
+                                  data = BikeDagDataWheatherPlusW)
+
+BikeModelPlusdistanceSignW <- lm(distancetotaal ~ BikeDagDataWheatherPlusW$`Temperature °C Mean` + 
+                                                 BikeDagDataWheatherPlusW$`Precipitation` +
+                                                 BikeDagDataWheatherPlusW$`Weekend_Start_11`, 
+                                  data = BikeDagDataWheatherPlusW)
+
+summary(BikeModelPlushuurSignW)                 
+summary(BikeModelPlusduurSignW)
+summary(BikeModelPlusdistanceSignW)
+
+```
+Enkel weekend selecteren geeft weinig meerwaarde....
+
+
+Het model wat het duurtotaal moet voorspellen laat de best voorspellende waarde (Multiple R-squared:  0.2558) zien maar frappant genoeg niet beter dan het eerder onderzochte model met ook de niet significante variabelen (Multiple R-squared:  0.2745), maar het blijft een niet al te beste waarde.
+
+Nu we een redelijk goed zicht hebben op de bepalende variabelen is het interessant om te zien hoe deze zich gaan 'gedragen' in ML modellen.
+
+## ML Analyses
+"All ML-methods are regression methods in some form"
+De analyses worden gedaan aan de hand van de draft-versie van het nieuw te verschijnen boek, 'The Art of Machine Learning' van Norm Matloff.
+Zie ook: http://heather.cs.ucdavis.edu/artofml/draft.pdf
+
+
+```{r ML simple k-NN inzake huurtotaal met enkel de weerdata}
+
+# De kNN-funtie uit Regtools package
+day1x <- BikeDagDataWheather[,c(5:8)] # selectie van de 4 weervariabelen in trainingsset: 
+                                      # Temperatuur/vochtigheid/windsnelheid/neerslag
+tot <- BikeDagDataWheather$huurtotaal # huurtotalen isoleren, de te voorspellen waarde
+knnout <- kNN(day1x,tot,c(12,84,2,2),5) 
+# voorspel het huurtotaal met temp is 12, vochtigheid 84, wind speed 2 en neerslag 2, 
+# met k=5 ,aantal 'nearest neighbours'
+# (The function kNN() does scaling by default)
+knnout$whichClosest # rijen die het dichts bij de voorspelde waarde zitten
+knnout$regests # Voorspelling totaal aantal verhuur met boven genoemde weervariabelen
+knnout$xcntr
+
+# gebruik mediaan ipv mean, verder alle variabelen hetzelfde
+knnout <- kNN(day1x,tot,c(12,84,2,2),5,smoothingFtn=median) 
+knnout$whichClosest
+knnout$regests
+knnout$xcntr
+
+# test met alle 4 weervariabele-gemiddelden:
+knnout <- kNN(day1x,tot,c(13.331, 74.58, 2.697, 2.843),5) #
+knnout$whichClosest
+knnout$regests
+knnout$xcntr
+
+# meerdere voorspellingen binnen een call, waardoor je wat sneller kan zien welke variabele veel effect heeft
+newx <- rbind(c(12,84,2,5),c(12,84,2,0)) 
+knnout <- kNN(day1x,tot,newx,5)
+knnout$whichClosest
+knnout$regests
+knnout$xcntr
+# verschil regen/geen regen in een run #(lijkt weinig uit te maken)
+newx <- rbind(c(12,84,2,2),c(24,84,2,2)) 
+knnout <- kNN(day1x,tot,newx,5)
+knnout$whichClosest
+knnout$regests
+knnout$xcntr
+# verschil verdubbeling temp in een run #(maakt bijna 40 verschil)
+newx <- rbind(c(0,84,2,0),c(24,84,2,0)) 
+knnout <- kNN(day1x,tot,newx,5)
+knnout$whichClosest
+knnout$regests
+knnout$xcntr
+# verschil echt koude dag met zomerse dag #(iets meer dan 10 verschil, 
+#### tweaken van meer  lijkt vooral verhuur te dempen ipv verhogen)
+
+# findOverallLoss(knnout$regests,tot) , (Loss-)functie lijkt helaas niet te werken, nadeel van werken met draft...
+#(ct <- table(data.test[, 1], knn.out))
+#(err_knn <- 1 - sum(diag(ct)) / sum(ct))
+#apply(knnout$x,1, findOverallLoss)
+#knnout$x[2]
+#knnout$x <- abs(knnout$x)
+#findOverallLoss(knnout$regests,tot)
+#nrow(knnout$x)
+
+#mean(tot)
+#plot(1:2187,tot,type='l')
+#ipv scaling kan je ook via onderstaande functies bepaalde features zwaarder laten wegen
+#The kNN() function
+#has an option for this, via the arguments expandVars and expandVals. The
+#former indicates which features to reweight, and the latter gives the reweighting values.
+
+#kNNallK()
+#knnout <- kNNallK(day1x,tot,day1x,4,leave1out=TRUE) # predicting original data (against itself)
+# str(knnout)
+#findOverallLoss(knnout$regests,tot)
+#knnout$whichClosest
+#knnout$regests
+#knnout$xcntr
+```
+
+Het heeft zo zijn nadelen om met een draft boek te werken, in de opmerkingen-pagina zag ik al dat de kNN functie niet altijd goed verliep.
+Voor een basis kennismaking met kNN volstaat dit nog wel maar voor een vergaande analyse (inclusief lossfunctie vinden) niet.
+Wel kan ik nog proberen om te zien wat je krijgt met een KNN-analyse incl. kalenderdata-variabelen. 
+
+```{r ML simple k-NN inzake huurtotaal met de weerdata en nu ook de kalenderdata}
+day1x <- BikeDagDataWheatherPlus[,c(3,9:12)] # selectie van de 4 weervariabelen in trainingsset: 
+                                             # Temperatuur/vochtigheid/windsnelheid/zon-duur Plus weekend (1/0)
+tot <- BikeDagDataWheatherPlus$huurtotaal # huurtotalen isoleren, de te voorspelle waarde
+knnout <- kNN(day1x,tot,c(1,12,84,2,2),5) 
+#knnout <- knnest(tot,day1x,5,nearf=meany) 
+# voorspel het huurtotaal in het weekend (1) met temp = 12, vochtigheid = 84, wind speed = 2 en neerslag 2, 
+# met k=5 ,aantal 'nearest neighbours'
+knnout$whichClosest # rijen die het dichts bij de voorspelde waarde zitten
+knnout$regests # Voorspelling totaal aantal verhuur met boven genoemde weervariabelen in het weekend
+knnout$xcntr
+
+knnout <- kNN(day1x,tot,c(0,12,84,2,2),5) 
+# voorspel het huurtotaal op een doordeweekse werkdag met temp is 12, vochtigheid 84, wind speed 2 en neerslag 2, 
+# met k=5 *aantal 'nearest neighbours'
+knnout$whichClosest # rijen die het dichts bij de voorspelde waarde zitten
+knnout$regests # Voorspelling totaal aantal verhuur met boven genoemde weervariabelen door de week
+knnout$xcntr
+
+# Nog een laatste NN met de belangrijkst gebleken weervariabele, temperatuur & neerslag en de dagen van de week;
+day1x <- BikeDagDataWheatherPlus[,c(2,9,12)] # selectie van de Temperatuur in trainingsset plus weekdag: 
+tot <- BikeDagDataWheatherPlus$huurtotaal # huurtotalen isoleren, de te voorspellen waarde
+knnout <- kNN(day1x,tot,c(1,1,4),5) 
+# Voorspel aantal verhuurde fietsen op een maandag in januari met temperatuur 4
+# met k=5 ,aantal 'nearest neighbours'
+knnout$whichClosest # rijen die het dichts bij de voorspelde waarde zitten
+knnout$regests # Voorspelling totaal aantal verhuur met boven genoemde weervariabelen in het weekend
+knnout$xcntr
+
+#xd <- preprocessx(day1x,5,xval=FALSE)
+#ko <- knnest(tot,xd,2)
+#ko$regest
+#predict(ko,matrix(76),TRUE)
+```
+Op deze manier kan je via de NN-techniek een schatting maken van het aantal verhuurde fietsen, gezien bepaalde omstandigheden (weer, maand etc.)
+Natuurlijk is dit niet meer dan een schets en een korte demonstratie, bij een vollediger analyse zou natuurlijk worden gezocht naar de optimale k-waarde,
+almede ook gekeken worden naar de invloed op gereden afstand en de duur van de huur om zo (bijvoorbeeld) het aantal beschikbare fietsen fine te tunen op
+de specifieke omstandigheden, per locatie.
+Voor een commerciele/bedrijfsmatige toepassing zou het dan een mooi eindresultaat zijn als je met een simpel dashboard variabelen *bv. de weervoorspellingen) invoert waarmee de dagtotalen, duurtotalen en/of afstandtotalen redelijk kunnen worden ingeschat.
+
+
+## Decision Trees
+
+Als laatste wordt in dit project de data geanalyseerd door middel van de zogenaamde beslisbomen.
+
+```{r Decision Trees part I}
+# NB, Het maakt niet uit voor de beslisboom-functie om wel of geen genormaliseerde data te gebruiken.
+
+biketr <- BikeDagDataWheather[,-1] # datum kolom verwijderen
+
+biketre <- subset(biketr, !is.na(huurtotaal))
+biketree <- ctree(huurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree)
+
+biketre <- subset(biketr, !is.na(duurtotaal))
+biketree <- ctree(duurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree)
+
+biketre <- subset(biketr, !is.na(distancetotaal))
+biketree <- ctree(distancetotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree)
+```
+De 3 variabelen huurtotaal, huurduur en distancetotaal hangen natuurlijk erg met elkaar samen,
+en het is dan ook niet verwonderlijk dat deze als meest belangrijke factoren uit de 'decision tree'-analyse komen,
+nog een analyse waarbij telkens 2 van deze 3 sterk samenhangende variabelen verwijderd worden als voorspellende variabele om zo beter zicht te krijgen op andere bepalende factoren.
+
+```{r Decision Trees part II}
+
+biketr <- BikeDagDataWheather[,c(-1,-3,-4)] # datum kolom verwijderen, alsmede duurtotaal en afstand
+biketre <- subset(biketr, !is.na(huurtotaal))
+biketree <- ctree(huurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Huurtotaal")
+
+
+biketr <- BikeDagDataWheather[,c(-1,-2,-4)] # datum kolom verwijderen, alsmede huurtotaal en afstand
+biketre <- subset(biketr, !is.na(duurtotaal))
+biketree <- ctree(duurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Duurtotaal")
+
+biketr <- BikeDagDataWheather[,c(-1,-2,-3)] # datum kolom verwijderen, alsmede duurtotaal en huurtotaal
+biketre <- subset(biketr, !is.na(distancetotaal))
+biketree <- ctree(distancetotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Afstand totaal")
+```
+Aardig om te zien dat voor zowel het aantal gehuurde fietsen alsmede de totaal gefietste afstand de neerslag de eerst bepalende factor is, maar voor de duur van de huur is de temperatuur weer eerst-bepalend, daarna echter is neerslag weer de meest bepalende factoor voor de hoogte van de gemiddelde duur van de huur. Bij de 2 andere variabelen zijn daarna de bepalende factoren gelijkmatiger verdeeld over de verschillende 'takken'. Wel is duidelijk dat de windsterkte verder geen rol speelt inzake de verhuur. Ook aardig om te zien dat als tweede onderscheidende variabele de relatieve vochtigheid naar vooren komt bij zowel huurtotaal alsmede afstandtotaal. Ook op niveau 3 zijn deze 2 variabelen verder gelijk met betrekking tot de voorspellende variabelen.
+
+```{r Decision Trees part III}
+
+#Als laatste een analyse met beslisbomen over de complete datasets, dus de data per rit, 
+#gekoppeld aan de eerder berekende variabelen: huurtotalen, duurtotalen en afstand-totalen.
+
+BikeGeoWeerdataTotals  <- merge(BikeGeoWeerdata, BikeDagDataWheather[,c("Start_date_2","huurtotaal","duurtotaal","distancetotaal")],
+                                                                      by="Start_date_2")
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,37,38)] # datum koloms verwijderen alsmede duurtotaal & distancetotaal,
+                                                                           # alsmede alle ritspecifieke data
+biketre <- subset(biketr, !is.na("huurtotaal"))
+biketree <- ctree(huurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Huurtotaal")
+
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,36,38)] # datum koloms verwijderen alsmede huurtotaal & distancetotaal,
+                                                                           # alsmede alle ritspecifieke data
+biketre <- subset(biketr, !is.na("duurtotaal"))
+biketree <- ctree(duurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Duurtotaal")
+
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,36,37)] # datum koloms verwijderen alsmede huurtotaal & duurtotaal,
+                                                                           # alsmede alle ritspecifieke data
+biketre <- subset(biketr, !is.na("distancetotaal"))
+biketree <- ctree(distancetotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Afstand totaal")
+```
+Voor huurtotaal alsmede afstandtotaal is ook hier het weer de meest belangrijke factor, met wederom neerslag als eerste factor. Als tweede bepalende factor zien we ook weer-factoren  en pas op het derde niveau van onderscheid komen ook kalanderdata naar vooren.
+
+Bij de variabele duurtotaal is het aardig om te zien dat weekend (wel of geen weekend) de meest belangrijke factor is waar te zien is dat in de weekenden de verhuren gemiddeld langer duren. Logisch te verklaren natuurlijk, geen korte forenzen-ritjes maar langere weekendtrips, dessalniettemin aardig om dit terug te zien in deze analyse.
+
+
+```{r Decision Trees part IV}
+
+#Ten slotte nog een bomenrij voor de 3 afhankelijke variabelen met alleen de significante weervariabalen temperatuur & neerslag behouden
+
+BikeGeoWeerdataTotals  <- merge(BikeGeoWeerdata, BikeDagDataWheather[,c("Start_date_2","huurtotaal","duurtotaal","distancetotaal")],
+                                                                      by="Start_date_2")
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,33:34,37,38)] # datum koloms verwijderen alsmede duurtotaal & distancetotaal,
+                                                                           # alsmede alle ritspecifieke data alsmede windsnelheid en luchtvochtigheid
+biketre <- subset(biketr, !is.na("huurtotaal"))
+biketree <- ctree(huurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Huurtotaal")
+
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,33:34,36,38)] # datum koloms verwijderen alsmede huurtotaal & distancetotaal,
+                                                                           # alsmede alle ritspecifieke data alsmede windsnelheid en luchtvochtigheid
+biketre <- subset(biketr, !is.na("duurtotaal"))
+biketree <- ctree(duurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Duurtotaal")
+
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,33:34,36,37)] # datum koloms verwijderen alsmede huurtotaal & duurtotaal,
+                                                                           # alsmede alle ritspecifieke data alsmede windsnelheid en luchtvochtigheid
+biketre <- subset(biketr, !is.na("distancetotaal"))
+biketree <- ctree(distancetotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Afstand totaal")
+```
+
+Er is nog een analyse getracht met beslis-bomen van diepte 4 maar dit geeft weinig meer inzicht in de te voorspellen aantallen voor wat betreft huurtotaal, duurtotaal en afstandtotaal. 
+
+De beslisboom met de belangrijkste afhankelijke variabele huurtotaal zal als laatste nog worden bijgewerkt ('pruning the three') om tot een optimale en goed inzichtelijk boom-model te komen
+
+```{r Tree pruning}
+# Als laatste gaan we de boom met de voor het verhuurbedrijf belangrijkste variabele huurtotaal dieper uitzoeken
+# Eerste een aantal verschillende 'boom-soorten', zelfde data, verschillende opmaak
+
+biketr <- BikeGeoWeerdataTotals[,-c(1:8,16,17,20,24:28,33:34,37,38)] # datum koloms verwijderen alsmede duurtotaal & distancetotaal,
+                                                                           # alsmede alle ritspecifieke data alsmede windsnelheid en luchtvochtigheid
+biketre <- subset(biketr, !is.na("huurtotaal"))
+biketree <- ctree(huurtotaal ~ ., data = biketre, control = ctree_control(maxdepth = 3))
+plot(biketree, main = "Huurtotaal; plot 1 variant")
+
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre)
+fancyRpartPlot(tree_bike_all, sub = NULL, main = "Huurtotaal; plot 2 variant")
+
+tree_bike_all <- rpart(huurtotaal ~ ., data = biketre)
+prp(tree_bike_all, type = 4, extra = 0, faclen = 0,  main = "Huurtotaal; plot 3 variant")
+
+plot(as.party(tree_bike_all), main = "Huurtotaal; plot 4 variant")
+
+tree_bike_all <- rpart(huurtotaal ~ ., data = biketre)
+prp(tree_bike_all, type = 4, extra = 0, faclen = 0,  main = "Huurtotaal; plot 5 variant")
+
+# Alpha tuning, finding optimal tree size; no underfitting & no overfitting
+# Alpha minimizes test-error but to big makes for a to small tree (underfitting)
+set.seed(123)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.004))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.005493))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.0107))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.0131))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.06129))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+tree_bike_all <- rpart(log(huurtotaal) ~ ., data = biketre,control = rpart.control(cp = 0.5689))
+prp(tree_bike_all)
+plotcp(tree_bike_all)
+printcp(tree_bike_all)
+```
+
